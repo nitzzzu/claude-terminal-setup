@@ -31,8 +31,8 @@ end
 
 function M.apply(config, platform)
   -- theme: pick ONE
-  config.color_scheme = "rose-pine-moon"
-  -- config.colors = coolnight  -- josean's coolnight instead
+  --config.color_scheme = "rose-pine-moon"
+  config.colors = coolnight  -- josean's coolnight instead
 
   config.max_fps = 120
 
@@ -44,7 +44,7 @@ function M.apply(config, platform)
   })
 
   config.enable_tab_bar = true
-  config.hide_tab_bar_if_only_one_tab = true
+  config.hide_tab_bar_if_only_one_tab = false
   -- INTEGRATED_BUTTONS keeps the frameless look but embeds clickable
   -- minimize/maximize/close buttons into the tab bar. Plain "RESIZE"
   -- removed them entirely.
@@ -67,7 +67,7 @@ function M.apply(config, platform)
 
   if platform.is_windows then
     try(config, "win32_system_backdrop", "Acrylic") -- newer builds only
-    config.window_background_opacity = 0.7
+    config.window_background_opacity = 0.8
     config.font_size = 11.0
     config.window_frame.font_size = 10.0
   end

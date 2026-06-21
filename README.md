@@ -13,7 +13,13 @@ The flag lives at the top of `wezterm/wezterm.lua`:
 ```lua
 local USE_WSL = true          -- B / C
 local WSL_DISTRO = "Ubuntu-24.04"
+local DEV_DIR = ""            -- "" = shell default; e.g. "/home/you/dev" for WSL
 ```
+
+`DEV_DIR` is the directory new tabs/panes open in. Left empty, WSL tabs inherit
+WezTerm's Windows cwd and land in `/mnt/c/Users/<you>`; set it to a Linux path
+(e.g. `/home/you/dev`) to start in your project instead. On native Windows/macOS
+use a native path. `onboard.py --dev-dir PATH` fills it in (and `~` is expanded).
 
 Setups B and C share the same config; **Hybrid is just the WSL setup plus the
 `LEADER+w` keybind** that opens a native Windows PowerShell tab for .NET work.
@@ -39,6 +45,7 @@ Useful flags:
 python3 onboard.py --dry-run       # show what it would do, change nothing
 python3 onboard.py --setup C       # hybrid (WSL + Windows PowerShell pane)
 python3 onboard.py --distro Ubuntu # override the auto-detected distro name
+python3 onboard.py --dev-dir ~/dev # new tabs open here instead of the home dir
 python3 onboard.py --skip-font     # skip the Hack Nerd Font install
 ```
 
@@ -217,6 +224,10 @@ terminal so Claude's "delete word" still works.
   `opts` (Windows: `where.exe claude`; WSL: `which claude`).
 - **Treesitter "no C compiler"** -> Windows: `winget install zig.zig`;
   WSL: `sudo apt install build-essential`. Then `:TSUpdate`.
+- **`missing or unsuitable terminal: wezterm`** (tmux/nvim) -> the wezterm
+  terminfo isn't installed on this side. `onboard.py` installs it; by hand:
+  `curl -fsSL -o /tmp/w.ti https://raw.githubusercontent.com/wez/wezterm/main/termwiz/data/wezterm.terminfo && tic -x -o ~/.terminfo /tmp/w.ti`
+  (needs `tic` from `ncurses-bin`).
 - **nvim washed out / no undercurl in tmux** -> ensure `~/.tmux.conf` has the
   truecolor + `usstyle` lines (it does here); restart tmux (`tmux kill-server`).
 - **`/ide` won't connect** -> Neovim and Claude are on different sides; put both

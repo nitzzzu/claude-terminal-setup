@@ -14,12 +14,14 @@ Run it from inside WSL for setup B/C, or from Windows (python) for setup A.
     python3 onboard.py --setup B
     python3 onboard.py --setup A
     python3 onboard.py --distro Ubuntu # override detected WSL distro name
+    python3 onboard.py --dev-dir ~/dev # new WezTerm tabs open here, not the home dir
     python3 onboard.py --skip-font     # don't install Hack Nerd Font
     python3 onboard.py --skip-lazygit  # don't install lazygit (the <leader>gg UI)
     python3 onboard.py --dry-run       # show what would happen, change nothing
 
-Besides copying configs, it installs Hack Nerd Font and the lazygit binary (the
-visual git UI Neovim opens with <leader>gg) on whichever side Neovim runs from.
+Besides copying configs, it installs Hack Nerd Font, the lazygit binary (the
+visual git UI Neovim opens with <leader>gg), and the wezterm terminfo (so tmux
+and nvim work under TERM=wezterm) on whichever side the shell runs from.
 """
 
 from __future__ import annotations
@@ -47,6 +49,10 @@ WIN_TOOLS = ["wezterm", "nvim", "rg", "claude", "lazygit"]
 
 # Hack Nerd Font — the patched font the appearance config expects.
 FONT_URL = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Hack.zip"
+
+# WezTerm terminfo — needed inside WSL/Linux because wezterm.lua sets
+# TERM=wezterm; without it tmux/nvim error ("missing or unsuitable terminal").
+TERMINFO_URL = "https://raw.githubusercontent.com/wez/wezterm/main/termwiz/data/wezterm.terminfo"
 
 # lazygit — the visual git UI opened from Neovim with <leader>gg (via snacks).
 LAZYGIT_API = "https://api.github.com/repos/jesseduffield/lazygit/releases/latest"
@@ -314,8 +320,42 @@ def install_lazygit(setup: str, wsl: bool, dry: bool) -> None:
 
 # ----------------------------------------------------------------------------- actions
 
-def patch_wezterm(use_wsl: bool, distro: str | None, dry: bool) -> None:
-    """Rewrite the USE_WSL / WSL_DISTRO flags at the top of wezterm.lua."""
+def install_terminfo(dry: bool) -> bool:
+    """Install the wezterm terminfo into ~/.terminfo (WSL/Linux side).
+
+    wezterm.lua advertises TERM=wezterm; without the matching terminfo, tmux
+    and nvim fail with "missing or unsuitable terminal: wezterm".
+    """
+    if subprocess.run(["infocmp", "-x", "wezterm"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        ok("wezterm terminfo already present")
+        return True
+    if not shutil.which("tic"):
+        warn("`tic` not found (install ncurses-bin); then re-run, or set "
+             'config.term = "xterm-256color" in wezterm.lua')
+        return False
+    if dry:
+        warn("[dry-run] would download wezterm terminfo and run tic -x -o ~/.terminfo")
+        return True
+    try:
+        say(f"  {C.DIM}downloading wezterm terminfo...{C.END}")
+        with tempfile.NamedTemporaryFile(suffix=".terminfo", delete=False) as tf:
+            tmp = Path(tf.name)
+            with urlopen(TERMINFO_URL) as resp:  # noqa: S310 (trusted source)
+                shutil.copyfileobj(resp, tf)
+        subprocess.run(["tic", "-x", "-o", str(Path.home() / ".terminfo"), str(tmp)],
+                       check=True)
+        tmp.unlink(missing_ok=True)
+    except Exception as e:  # network / tic / IO
+        err(f"terminfo install failed ({e}); install it by hand (see WezTerm docs)")
+        return False
+    ok("wezterm terminfo installed -> ~/.terminfo")
+    return True
+
+
+def patch_wezterm(use_wsl: bool, distro: str | None, dev_dir: str | None,
+                  dry: bool) -> None:
+    """Rewrite the USE_WSL / WSL_DISTRO / DEV_DIR flags at the top of wezterm.lua."""
     lua = REPO / "wezterm" / "wezterm.lua"
     text = lua.read_text()
     new = text
@@ -335,10 +375,20 @@ def patch_wezterm(use_wsl: bool, distro: str | None, dry: bool) -> None:
             count=1,
             flags=re.M,
         )
+    if dev_dir is not None:
+        # escape backslashes (Windows paths) for the Lua string literal
+        lua_dir = dev_dir.replace("\\", "\\\\")
+        new = re.sub(
+            r'^local DEV_DIR = "[^"]*"',
+            f'local DEV_DIR = "{lua_dir}"',
+            new,
+            count=1,
+            flags=re.M,
+        )
 
     label = f"USE_WSL={'true' if use_wsl else 'false'}" + (
         f', WSL_DISTRO="{distro}"' if distro else ""
-    )
+    ) + (f', DEV_DIR="{dev_dir}"' if dev_dir is not None else "")
     if new == text:
         ok(f"wezterm.lua already set ({label})")
         return
@@ -425,10 +475,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Install the dev terminal setup.")
     ap.add_argument("--setup", choices=["A", "B", "C"], help="which setup (default: auto)")
     ap.add_argument("--distro", help="WSL distro name (default: auto-detect)")
+    ap.add_argument("--dev-dir", help="working directory new WezTerm tabs open in "
+                    "(WSL/Linux: a Linux path like ~/dev; Windows: C:\\Users\\you\\dev)")
     ap.add_argument("--skip-font", action="store_true",
                     help="don't install Hack Nerd Font")
     ap.add_argument("--skip-lazygit", action="store_true",
                     help="don't install lazygit (the <leader>gg git UI)")
+    ap.add_argument("--skip-terminfo", action="store_true",
+                    help="don't install the wezterm terminfo (WSL/Linux)")
     ap.add_argument("--dry-run", action="store_true", help="show actions, change nothing")
     args = ap.parse_args()
 
@@ -437,10 +491,29 @@ def main() -> int:
     use_wsl = setup in ("B", "C")
     distro = args.distro or (detect_distro() if use_wsl else None)
 
+    dev_dir = args.dev_dir
+    if dev_dir is not None and dev_dir.startswith("~"):
+        dev_dir = os.path.expanduser(dev_dir)  # ~/dev -> /home/you/dev inside WSL
+
     header(f"Onboarding setup {setup}")
     say(f"  running inside WSL : {'yes' if wsl else 'no'}")
     say(f"  USE_WSL            : {use_wsl}")
     say(f"  WSL_DISTRO         : {distro or '(unchanged)'}")
+    say(f"  DEV_DIR            : {dev_dir or '(unchanged)'}")
+
+    # Create the dev dir on the side we can actually see, so the WSL spawn
+    # doesn't fail on a missing path. Skip Windows paths seen from WSL etc.
+    if dev_dir:
+        ours = (dev_dir.startswith("/") if (wsl or os.name != "nt")
+                else (":" in dev_dir or dev_dir.startswith("\\\\")))
+        if ours:
+            p = Path(dev_dir)
+            if args.dry_run:
+                if not p.exists():
+                    warn(f"[dry-run] would create dev dir {p}")
+            elif not p.exists():
+                p.mkdir(parents=True, exist_ok=True)
+                ok(f"created dev dir {p}")
     if args.dry_run:
         warn("  DRY RUN — no files will be written")
 
@@ -454,7 +527,7 @@ def main() -> int:
              "(pass --distro NAME, see `wsl -l -q`).")
 
     header("Patching config flags")
-    patch_wezterm(use_wsl, distro, args.dry_run)
+    patch_wezterm(use_wsl, distro, dev_dir, args.dry_run)
 
     header("Installing config files")
     # WezTerm config always lives on the Windows side.
@@ -487,6 +560,16 @@ def main() -> int:
         warn("skipped (--skip-lazygit); <leader>gg in nvim needs lazygit on PATH")
     else:
         install_lazygit(setup, wsl, args.dry_run)
+
+    # TERM=wezterm needs a matching terminfo on the side the shell runs (not
+    # native Windows, which uses PowerShell + the WezTerm-provided terminfo).
+    if wsl or os.name != "nt":
+        if args.skip_terminfo:
+            header("Installing wezterm terminfo")
+            warn("skipped (--skip-terminfo); tmux/nvim need it under TERM=wezterm")
+        else:
+            header("Installing wezterm terminfo")
+            install_terminfo(args.dry_run)
 
     verify_tools(WSL_TOOLS if wsl else WIN_TOOLS)
     next_steps(setup)

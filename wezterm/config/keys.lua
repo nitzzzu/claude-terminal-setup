@@ -21,20 +21,25 @@ function M.apply(config, platform, opts)
     claude_cmd = { "claude" }
   end
 
+  -- Directory new tabs/panes open in. nil -> inherit / domain default.
+  -- Set explicitly (not just via default_cwd) because on Windows WezTerm can't
+  -- read a WSL pane's cwd, so SpawnTab would otherwise fall back to the host cwd.
+  local cwd = (opts.dev_dir and opts.dev_dir ~= "") and opts.dev_dir or nil
+
   config.keys = {
     -- clipboard (Cmd on macOS, Ctrl+Shift on Windows/Linux)
     { key = "v", mods = "CMD", action = act.PasteFrom("Clipboard") },
     { key = "v", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") },
     { key = "c", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") },
 
-    -- tabs
-    { key = "c", mods = "LEADER", action = act.SpawnTab("CurrentPaneDomain") },
+    -- tabs (open in DEV_DIR when set; SpawnCommandInNewTab accepts a cwd)
+    { key = "c", mods = "LEADER", action = act.SpawnCommandInNewTab({ domain = "CurrentPaneDomain", cwd = cwd }) },
     { key = "n", mods = "LEADER", action = act.ActivateTabRelative(1) },
     { key = "p", mods = "LEADER", action = act.ActivateTabRelative(-1) },
 
     -- split panes
-    { key = "\\", mods = "LEADER", action = act.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
-    { key = "-", mods = "LEADER", action = act.SplitVertical({ domain = "CurrentPaneDomain" }) },
+    { key = "\\", mods = "LEADER", action = act.SplitHorizontal({ domain = "CurrentPaneDomain", cwd = cwd }) },
+    { key = "-", mods = "LEADER", action = act.SplitVertical({ domain = "CurrentPaneDomain", cwd = cwd }) },
 
     -- move between panes (vim-style)
     { key = "h", mods = "LEADER", action = act.ActivatePaneDirection("Left") },
@@ -54,7 +59,7 @@ function M.apply(config, platform, opts)
       action = act.SplitPane({
         direction = "Right",
         size = { Percent = 40 },
-        command = { args = claude_cmd },
+        command = { args = claude_cmd, cwd = cwd },
       }),
     },
   }
@@ -77,7 +82,8 @@ function M.apply(config, platform, opts)
         mods = "LEADER",
         action = act.SplitPane({
           direction = "Right",
-          domain = { DomainName = "WSL:" .. (opts.wsl_distro or "Ubuntu-24.04") },
+          -- the target domain belongs inside `command`, not at the top level
+          command = { domain = { DomainName = "WSL:" .. (opts.wsl_distro or "Ubuntu-24.04") }, cwd = cwd },
         }),
       })
     end
