@@ -8,6 +8,22 @@ vim.opt.relativenumber = true
 vim.opt.termguicolors = true -- required for rose-pine / true color
 vim.opt.signcolumn = "yes"   -- stable gutter for diagnostics
 
+-- one-press window switching (no leading <C-w>); works left/down/up/right
+vim.keymap.set("n", "<C-h>", "<C-w>h", { desc = "Window left" })
+vim.keymap.set("n", "<C-j>", "<C-w>j", { desc = "Window down" })
+vim.keymap.set("n", "<C-k>", "<C-w>k", { desc = "Window up" })
+vim.keymap.set("n", "<C-l>", "<C-w>l", { desc = "Window right" })
+
+-- same keys escape a terminal (e.g. the Claude pane) and jump to the next window
+-- note: this overrides <C-h/j/k/l> inside the terminal app; <C-w> is left alone
+-- so Claude's "delete word" still works. Use Backspace instead of <C-h> in Claude.
+vim.keymap.set("t", "<C-h>", "<C-\\><C-n><C-w>h", { desc = "Window left" })
+vim.keymap.set("t", "<C-j>", "<C-\\><C-n><C-w>j", { desc = "Window down" })
+vim.keymap.set("t", "<C-k>", "<C-\\><C-n><C-w>k", { desc = "Window up" })
+vim.keymap.set("t", "<C-l>", "<C-\\><C-n><C-w>l", { desc = "Window right" })
+-- quick escape from terminal mode to normal mode without moving
+vim.keymap.set("t", "<C-q>", "<C-\\><C-n>", { desc = "Terminal -> normal mode" })
+
 -- bootstrap lazy.nvim
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
@@ -146,6 +162,19 @@ require("lazy").setup({
 
   -- Git signs in the gutter
   { "lewis6991/gitsigns.nvim", opts = {} },
+
+  -- Visual git UI (lazygit in a float): diffs, stage, commit, push/pull, branches.
+  -- Needs the `lazygit` binary on PATH. snacks.nvim is already pulled in by
+  -- claudecode.nvim; here we set it up explicitly so the Snacks global exists.
+  {
+    "folke/snacks.nvim",
+    opts = { lazygit = {} },
+    keys = {
+      { "<leader>gg", function() Snacks.lazygit() end,          desc = "Lazygit (status)" },
+      { "<leader>gl", function() Snacks.lazygit.log() end,      desc = "Lazygit (repo log)" },
+      { "<leader>gf", function() Snacks.lazygit.log_file() end, desc = "Lazygit (file history)" },
+    },
+  },
 
   -- Fuzzy finder (needs ripgrep on PATH for live_grep / find_files)
   {

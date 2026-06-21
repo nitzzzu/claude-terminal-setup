@@ -15,31 +15,46 @@ Run it from inside WSL for setup B/C, or from Windows (python) for setup A.
     python3 onboard.py --setup A
     python3 onboard.py --distro Ubuntu # override detected WSL distro name
     python3 onboard.py --skip-font     # don't install Hack Nerd Font
+    python3 onboard.py --skip-lazygit  # don't install lazygit (the <leader>gg UI)
     python3 onboard.py --dry-run       # show what would happen, change nothing
+
+Besides copying configs, it installs Hack Nerd Font and the lazygit binary (the
+visual git UI Neovim opens with <leader>gg) on whichever side Neovim runs from.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 
 REPO = Path(__file__).resolve().parent
 
 # Tools we expect on PATH, per side.
-WSL_TOOLS = ["nvim", "tmux", "rg", "claude", "gcc"]
-WIN_TOOLS = ["wezterm", "nvim", "rg", "claude"]
+WSL_TOOLS = ["nvim", "tmux", "rg", "claude", "gcc", "lazygit"]
+WIN_TOOLS = ["wezterm", "nvim", "rg", "claude", "lazygit"]
 
 # Hack Nerd Font — the patched font the appearance config expects.
 FONT_URL = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Hack.zip"
+
+# lazygit — the visual git UI opened from Neovim with <leader>gg (via snacks).
+LAZYGIT_API = "https://api.github.com/repos/jesseduffield/lazygit/releases/latest"
+# uname -m -> the arch token used in lazygit's Linux release asset names.
+_LAZYGIT_ARCH = {
+    "x86_64": "x86_64", "amd64": "x86_64",
+    "aarch64": "arm64", "arm64": "arm64",
+}
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -211,6 +226,92 @@ def install_font(setup: str, wsl: bool, dry: bool) -> None:
         install_font_linux(dry)
 
 
+def _latest_lazygit_version() -> str:
+    """Return the latest lazygit version (no leading 'v') from the GitHub API."""
+    req = Request(LAZYGIT_API, headers={"Accept": "application/vnd.github+json"})
+    with urlopen(req) as resp:  # noqa: S310 (trusted GitHub API)
+        data = json.load(resp)
+    return str(data["tag_name"]).lstrip("v")
+
+
+def install_lazygit_linux(dry: bool) -> bool:
+    """Install the lazygit binary into ~/.local/bin from its GitHub release."""
+    if shutil.which("lazygit"):
+        ok(f"lazygit already installed {C.DIM}-> {shutil.which('lazygit')}{C.END}")
+        return True
+    arch = _LAZYGIT_ARCH.get(platform.machine().lower())
+    if not arch:
+        warn(f"lazygit: unrecognized arch {platform.machine()!r}; install it by hand "
+             "from github.com/jesseduffield/lazygit/releases")
+        return False
+    dest = Path.home() / ".local" / "bin" / "lazygit"
+    if dry:
+        warn(f"[dry-run] would download lazygit ({arch}) -> {dest}")
+        return True
+    try:
+        ver = _latest_lazygit_version()
+        url = (f"https://github.com/jesseduffield/lazygit/releases/download/"
+               f"v{ver}/lazygit_{ver}_Linux_{arch}.tar.gz")
+        say(f"  {C.DIM}downloading lazygit v{ver}...{C.END}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tf:
+            tmp_tar = Path(tf.name)
+            with urlopen(url) as resp:  # noqa: S310 (trusted GitHub release)
+                shutil.copyfileobj(resp, tf)
+        with tarfile.open(tmp_tar) as t:
+            member = t.extractfile("lazygit")
+            if member is None:
+                raise RuntimeError("no 'lazygit' binary in release tarball")
+            dest.write_bytes(member.read())
+        dest.chmod(0o755)
+        tmp_tar.unlink(missing_ok=True)
+    except Exception as e:  # network / tar / IO
+        err(f"lazygit install failed ({e}); grab it from "
+            "github.com/jesseduffield/lazygit/releases by hand")
+        return False
+    ok(f"Installed lazygit v{ver} -> {dest}")
+    local_bin = str(dest.parent)
+    if local_bin not in os.environ.get("PATH", "").split(os.pathsep):
+        warn(f"  {local_bin} is not on PATH — add it so nvim's <leader>gg can find lazygit")
+    return True
+
+
+def install_lazygit_windows(dry: bool) -> bool:
+    """Install lazygit on the Windows side via winget."""
+    if shutil.which("lazygit"):
+        ok(f"lazygit already installed {C.DIM}-> {shutil.which('lazygit')}{C.END}")
+        return True
+    winget = shutil.which("winget") or shutil.which("winget.exe")
+    if not winget:
+        warn("winget not found; install lazygit with `winget install JesseDuffield.lazygit`")
+        return False
+    if dry:
+        warn("[dry-run] would run winget install JesseDuffield.lazygit")
+        return True
+    say(f"  {C.DIM}installing lazygit via winget...{C.END}")
+    try:
+        subprocess.run(
+            [winget, "install", "--id", "JesseDuffield.lazygit", "-e",
+             "--accept-package-agreements", "--accept-source-agreements"],
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as e:
+        err(f"lazygit install failed ({e}); run `winget install JesseDuffield.lazygit` by hand")
+        return False
+    ok("lazygit installed (Windows side)")
+    return True
+
+
+def install_lazygit(setup: str, wsl: bool, dry: bool) -> None:
+    """Install lazygit on the side Neovim runs from (where <leader>gg invokes it)."""
+    header("Installing lazygit")
+    if wsl or os.name != "nt":
+        # B/C run inside WSL (nvim is on the Linux side); pure-Linux host likewise.
+        install_lazygit_linux(dry)
+    else:
+        install_lazygit_windows(dry)
+
+
 # ----------------------------------------------------------------------------- actions
 
 def patch_wezterm(use_wsl: bool, distro: str | None, dry: bool) -> None:
@@ -295,6 +396,7 @@ def next_steps(setup: str) -> None:
         steps = [
             "Restart WezTerm so it reloads the config (and picks up the new font).",
             "Run `claude` once to log in.",
+            "In nvim: <leader>gg opens lazygit; Ctrl+h/j/k/l jump between splits.",
         ]
     else:
         steps = [
@@ -303,6 +405,8 @@ def next_steps(setup: str) -> None:
             "Restart WezTerm so it boots into your distro with the new config.",
             "Run `claude` once in a WSL pane to log in.",
             "First `nvim` launch bootstraps plugins; then `:TSUpdate` and `:Mason`.",
+            "In nvim: <leader>gg opens lazygit (diffs, stage, commit, push/pull); "
+            "Ctrl+h/j/k/l jump between splits (incl. out of the Claude terminal).",
             "Test: LEADER+a (Ctrl+Space, a) opens Claude in a pane; type `/ide` to "
             "connect to a running Neovim on the same side.",
         ]
@@ -323,6 +427,8 @@ def main() -> int:
     ap.add_argument("--distro", help="WSL distro name (default: auto-detect)")
     ap.add_argument("--skip-font", action="store_true",
                     help="don't install Hack Nerd Font")
+    ap.add_argument("--skip-lazygit", action="store_true",
+                    help="don't install lazygit (the <leader>gg git UI)")
     ap.add_argument("--dry-run", action="store_true", help="show actions, change nothing")
     args = ap.parse_args()
 
@@ -375,6 +481,12 @@ def main() -> int:
         warn("skipped (--skip-font); install from nerdfonts.com if needed")
     else:
         install_font(setup, wsl, args.dry_run)
+
+    if args.skip_lazygit:
+        header("Installing lazygit")
+        warn("skipped (--skip-lazygit); <leader>gg in nvim needs lazygit on PATH")
+    else:
+        install_lazygit(setup, wsl, args.dry_run)
 
     verify_tools(WSL_TOOLS if wsl else WIN_TOOLS)
     next_steps(setup)

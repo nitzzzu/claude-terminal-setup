@@ -93,6 +93,7 @@ winget install Neovim.Neovim
 winget install Git.Git
 winget install zig.zig                  # treesitter compiler
 winget install BurntSushi.ripgrep.MSVC  # Telescope
+winget install JesseDuffield.lazygit    # visual git UI (<leader>gg in nvim)
 irm https://claude.ai/install.ps1 | iex # Claude Code
 ```
 
@@ -123,6 +124,11 @@ sudo apt install -y build-essential ripgrep tmux unzip
 sudo apt install -y neovim   # or the latest from github.com/neovim/neovim/releases
 curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (Linux build)
 ```
+
+`onboard.py` also installs **lazygit** (the `<leader>gg` git UI in Neovim) into
+`~/.local/bin` from its GitHub release. To do it by hand, grab the
+`Linux_x86_64` tarball from `github.com/jesseduffield/lazygit/releases` and drop
+the `lazygit` binary somewhere on your PATH.
 
 - Keep **WezTerm + Hack Nerd Font installed on Windows** (WezTerm is the Windows
   host app that renders WSL).
@@ -183,6 +189,14 @@ Do everything in **Setup B**, then:
 | `<leader>rn` / `ca`        | rename / code action (LSP)            |
 | `[d` / `]d`                | prev / next diagnostic                |
 | `<leader>ff` / `fg` / `fb` | find files / live grep / buffers      |
+| `<leader>gg` / `gl` / `gf` | lazygit status / repo log / file log  |
+| `Ctrl+h/j/k/l`             | move between windows (splits)         |
+| `Ctrl+q` (in a terminal)   | leave terminal mode -> normal mode    |
+
+`Ctrl+h/j/k/l` also work **from inside the Claude terminal** — they drop you out
+of terminal mode and into the next split in one keystroke (so use `Backspace`,
+not `Ctrl+h`, to delete inside Claude). `Ctrl+w` is left untouched in the
+terminal so Claude's "delete word" still works.
 
 **tmux** (WSL): default prefix `Ctrl+b`; mouse enabled.
 
@@ -207,6 +221,9 @@ Do everything in **Setup B**, then:
   truecolor + `usstyle` lines (it does here); restart tmux (`tmux kill-server`).
 - **`/ide` won't connect** -> Neovim and Claude are on different sides; put both
   in WSL or both on Windows.
+- **`<leader>gg` errors / "lazygit not found"** -> the `lazygit` binary isn't on
+  PATH. Re-run `onboard.py`, or install it (WSL: GitHub release into
+  `~/.local/bin`, ensure that's on PATH; Windows: `winget install JesseDuffield.lazygit`).
 - **Visual Studio slow on a WSL project** -> expected; move that project to `C:\`.
 - **`pwsh.exe` not found** -> install PowerShell 7 or change `pwsh.exe` to
   `powershell.exe` in `wezterm.lua` / `keys.lua`.
