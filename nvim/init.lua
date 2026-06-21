@@ -242,6 +242,13 @@ require("lazy").setup({
     opts = {
       -- If nvim can't find claude, run `where.exe claude` in PowerShell and set:
       -- terminal_cmd = vim.fn.expand("~/.local/bin/claude.exe"),
+      terminal = {
+        -- Open Claude in a bottom split (50% tall) instead of a right vsplit.
+        -- The native provider only does left/right vsplits, so use snacks, whose
+        -- window position we override to "bottom".
+        provider = "snacks",
+        snacks_win_opts = { position = "bottom", height = 0.50 },
+      },
     },
     config = true,
     keys = {
