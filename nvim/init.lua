@@ -13,6 +13,61 @@ vim.opt.signcolumn = "yes"   -- stable gutter for diagnostics
 -- quick escape from terminal mode (e.g. the Claude split) to normal mode.
 vim.keymap.set("t", "<C-q>", "<C-\\><C-n>", { desc = "Terminal -> normal mode" })
 
+-- Quality-of-life (borrowed from vossenwout/pookie-dotfiles) -----------------
+
+-- Briefly flash text on yank.
+vim.api.nvim_create_autocmd("TextYankPost", {
+  desc = "Highlight on yank",
+  callback = function() vim.hl.on_yank({ timeout = 300 }) end,
+})
+
+-- Copy the current file's path to the system clipboard (handy for pasting to
+-- Claude). NOTE: on WSL the "+" register needs a clipboard provider (win32yank,
+-- or a clip.exe/win32yank shim); without one these copy to nvim's register only.
+vim.keymap.set("n", "<leader>cp", function()
+  local p = vim.fn.expand("%:p")
+  vim.fn.setreg("+", p)
+  vim.notify("Copied " .. p)
+end, { desc = "Copy absolute file path" })
+vim.keymap.set("n", "<leader>cr", function()
+  local p = vim.fn.expand("%:.")
+  vim.fn.setreg("+", p)
+  vim.notify("Copied " .. p)
+end, { desc = "Copy relative file path" })
+
+-- Emacs-style motions on the : command line.
+vim.keymap.set("c", "<C-a>", "<Home>")
+vim.keymap.set("c", "<C-e>", "<End>")
+
+-- Cleaner diagnostics: severity-sorted, source shown in the float, no underline.
+vim.diagnostic.config({
+  severity_sort = true,
+  underline = false,
+  float = { source = true },
+})
+
+-- WSL clipboard: route the "+"/"*" registers through the Windows clipboard so
+-- `"+y` and the copy-path maps above reach Windows apps. clip.exe copies (same
+-- tool tmux uses); it can't read back, so PowerShell's Get-Clipboard pastes
+-- (stripping the CR that Windows appends). Guarded to WSL so native-Windows
+-- setup A keeps nvim's built-in provider.
+-- Tradeoff: each paste spawns powershell.exe (~slow). For snappier paste install
+-- win32yank.exe and delete this block — Neovim then auto-detects win32yank.
+if vim.fn.has("wsl") == 1 and vim.fn.executable("clip.exe") == 1 then
+  vim.g.clipboard = {
+    name = "WslClipboard",
+    copy = {
+      ["+"] = "clip.exe",
+      ["*"] = "clip.exe",
+    },
+    paste = {
+      ["+"] = 'powershell.exe -NoProfile -Command [Console]::Out.Write($(Get-Clipboard -Raw).tostring().replace("`r", ""))',
+      ["*"] = 'powershell.exe -NoProfile -Command [Console]::Out.Write($(Get-Clipboard -Raw).tostring().replace("`r", ""))',
+    },
+    cache_enabled = 0,
+  }
+end
+
 -- bootstrap lazy.nvim
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
@@ -233,6 +288,30 @@ require("lazy").setup({
       { "<leader>fb", "<cmd>Telescope buffers<cr>",    desc = "Buffers" },
       { "<leader>fh", "<cmd>Telescope help_tags<cr>",  desc = "Help tags" },
     },
+  },
+
+  -- Edit the filesystem like a buffer; "-" jumps to the parent dir. Complements
+  -- neo-tree (which handles browsing + `nvim .`): default_file_explorer = false
+  -- so oil does NOT hijack netrw and fight neo-tree — it opens only via "-".
+  {
+    "stevearc/oil.nvim",
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    opts = { default_file_explorer = false },
+    keys = {
+      { "-", "<cmd>Oil<cr>", desc = "Open parent dir (Oil)" },
+    },
+  },
+
+  -- Prettify markdown in-buffer (headings, code fences, tables, checkboxes).
+  -- Needs the `markdown` treesitter parser (already in ensure_installed above).
+  {
+    "MeanderingProgrammer/render-markdown.nvim",
+    ft = { "markdown" },
+    dependencies = {
+      "nvim-treesitter/nvim-treesitter",
+      "nvim-tree/nvim-web-devicons",
+    },
+    opts = {},
   },
 
   -- Claude Code (the IDE integration)
