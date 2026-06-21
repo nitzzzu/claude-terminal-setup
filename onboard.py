@@ -22,6 +22,10 @@ Run it from inside WSL for setup B/C, or from Windows (python) for setup A.
 Besides copying configs, it installs Hack Nerd Font, the lazygit binary (the
 visual git UI Neovim opens with <leader>gg), and the wezterm terminfo (so tmux
 and nvim work under TERM=wezterm) on whichever side the shell runs from.
+
+Neovim plugins (which-key, smart-splits, trouble, ...) install themselves via
+lazy.nvim on first launch. The WezTerm config uses only built-in APIs (no plugin
+manager) to keep startup fast.
 """
 
 from __future__ import annotations
@@ -455,8 +459,8 @@ def next_steps(setup: str) -> None:
             "Restart WezTerm so it boots into your distro with the new config.",
             "Run `claude` once in a WSL pane to log in.",
             "First `nvim` launch bootstraps plugins; then `:TSUpdate` and `:Mason`.",
-            "In nvim: <leader>gg opens lazygit (diffs, stage, commit, push/pull); "
-            "Ctrl+h/j/k/l jump between splits (incl. out of the Claude terminal).",
+            "In nvim: <leader>gg opens lazygit; Ctrl+h/j/k/l move between splits "
+            "(and WezTerm panes when nvim isn't focused); <leader> shows which-key.",
             "Test: LEADER+a (Ctrl+Space, a) opens Claude in a pane; type `/ide` to "
             "connect to a running Neovim on the same side.",
         ]

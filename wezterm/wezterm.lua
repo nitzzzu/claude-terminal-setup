@@ -27,6 +27,9 @@ config.term = "wezterm"
 
 require("config.appearance").apply(config, platform)
 require("config.keys").apply(config, platform, { use_wsl = USE_WSL, wsl_distro = WSL_DISTRO, dev_dir = DEV_DIR })
+-- plugins (smart-splits, tabline, resurrect, workspace switcher) — must run
+-- after keys.apply so it can append to the keybinding table.
+require("config.plugins").apply(config, platform, { dev_dir = DEV_DIR })
 
 -- shell / default domain
 if platform.is_windows then

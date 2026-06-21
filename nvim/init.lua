@@ -8,20 +8,9 @@ vim.opt.relativenumber = true
 vim.opt.termguicolors = true -- required for rose-pine / true color
 vim.opt.signcolumn = "yes"   -- stable gutter for diagnostics
 
--- one-press window switching (no leading <C-w>); works left/down/up/right
-vim.keymap.set("n", "<C-h>", "<C-w>h", { desc = "Window left" })
-vim.keymap.set("n", "<C-j>", "<C-w>j", { desc = "Window down" })
-vim.keymap.set("n", "<C-k>", "<C-w>k", { desc = "Window up" })
-vim.keymap.set("n", "<C-l>", "<C-w>l", { desc = "Window right" })
-
--- same keys escape a terminal (e.g. the Claude pane) and jump to the next window
--- note: this overrides <C-h/j/k/l> inside the terminal app; <C-w> is left alone
--- so Claude's "delete word" still works. Use Backspace instead of <C-h> in Claude.
-vim.keymap.set("t", "<C-h>", "<C-\\><C-n><C-w>h", { desc = "Window left" })
-vim.keymap.set("t", "<C-j>", "<C-\\><C-n><C-w>j", { desc = "Window down" })
-vim.keymap.set("t", "<C-k>", "<C-\\><C-n><C-w>k", { desc = "Window up" })
-vim.keymap.set("t", "<C-l>", "<C-\\><C-n><C-w>l", { desc = "Window right" })
--- quick escape from terminal mode to normal mode without moving
+-- Ctrl+h/j/k/l window navigation is provided by smart-splits.nvim below — it
+-- also crosses seamlessly into adjacent WezTerm panes. Here we only keep the
+-- quick escape from terminal mode (e.g. the Claude split) to normal mode.
 vim.keymap.set("t", "<C-q>", "<C-\\><C-n>", { desc = "Terminal -> normal mode" })
 
 -- bootstrap lazy.nvim
@@ -175,6 +164,63 @@ require("lazy").setup({
       { "<leader>gf", function() Snacks.lazygit.log_file() end, desc = "Lazygit (file history)" },
     },
   },
+
+  -- Ctrl+h/j/k/l moves between Neovim splits; Alt+h/j/k/l resizes. The WezTerm
+  -- side (wezterm/config/plugins.lua) detects when nvim is focused and passes
+  -- these keys through, so the same keys move WezTerm panes when nvim isn't.
+  -- multiplexer_integration is off: WezTerm drives the crossing, not nvim, so
+  -- nvim never shells out to `wezterm cli`.
+  {
+    "mrjones2014/smart-splits.nvim",
+    lazy = false,
+    config = function()
+      local ss = require("smart-splits")
+      ss.setup({ multiplexer_integration = false })
+      vim.keymap.set("n", "<C-h>", ss.move_cursor_left,  { desc = "Go to left split/pane" })
+      vim.keymap.set("n", "<C-j>", ss.move_cursor_down,  { desc = "Go to below split/pane" })
+      vim.keymap.set("n", "<C-k>", ss.move_cursor_up,    { desc = "Go to above split/pane" })
+      vim.keymap.set("n", "<C-l>", ss.move_cursor_right, { desc = "Go to right split/pane" })
+      vim.keymap.set("n", "<A-h>", ss.resize_left)
+      vim.keymap.set("n", "<A-j>", ss.resize_down)
+      vim.keymap.set("n", "<A-k>", ss.resize_up)
+      vim.keymap.set("n", "<A-l>", ss.resize_right)
+      -- from a terminal split (e.g. claudecode.nvim): exit term mode, then move
+      for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
+        vim.keymap.set("t", "<C-" .. key .. ">",
+          string.format("<C-\\><C-n><cmd>lua require('smart-splits').move_cursor_%s()<cr>", dir))
+      end
+    end,
+  },
+
+  -- Keybinding popup: shows available <leader> mappings as you type.
+  { "folke/which-key.nvim", event = "VeryLazy", opts = {} },
+
+  -- Pretty diagnostics / references / quickfix list.
+  {
+    "folke/trouble.nvim",
+    cmd = "Trouble",
+    keys = {
+      { "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>",              desc = "Diagnostics (Trouble)" },
+      { "<leader>xX", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", desc = "Buffer diagnostics" },
+      { "<leader>xs", "<cmd>Trouble symbols toggle<cr>",                  desc = "Symbols" },
+      { "<leader>xq", "<cmd>Trouble qflist toggle<cr>",                   desc = "Quickfix list" },
+    },
+    opts = {},
+  },
+
+  -- Highlight + search TODO / FIXME / HACK comments.
+  {
+    "folke/todo-comments.nvim",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    event = "VeryLazy",
+    opts = {},
+  },
+
+  -- Indentation guides.
+  { "lukas-reineke/indent-blankline.nvim", main = "ibl", event = "VeryLazy", opts = {} },
+
+  -- Auto-close brackets/quotes (integrates with blink.cmp automatically).
+  { "windwp/nvim-autopairs", event = "InsertEnter", opts = {} },
 
   -- Fuzzy finder (needs ripgrep on PATH for live_grep / find_files)
   {

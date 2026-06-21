@@ -61,7 +61,7 @@ claude-terminal-setup/
 ├── onboard.py                 # one-command installer (see Quick install)
 ├── wezterm/
 │   ├── wezterm.lua            -> %USERPROFILE%\.config\wezterm\wezterm.lua
-│   └── config/{platform,appearance,keys}.lua
+│   └── config/{platform,appearance,keys,plugins}.lua
 ├── nvim/
 │   └── init.lua               -> Windows: %LOCALAPPDATA%\nvim\init.lua
 │                              -> WSL:     ~/.config/nvim/init.lua
@@ -133,9 +133,9 @@ curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (Linux build)
 ```
 
 `onboard.py` also installs **lazygit** (the `<leader>gg` git UI in Neovim) into
-`~/.local/bin` from its GitHub release. To do it by hand, grab the
-`Linux_x86_64` tarball from `github.com/jesseduffield/lazygit/releases` and drop
-the `lazygit` binary somewhere on your PATH.
+`~/.local/bin`, plus the **wezterm terminfo** (so tmux/nvim work under
+`TERM=wezterm`). To do lazygit by hand, grab the `Linux_x86_64` tarball from
+`github.com/jesseduffield/lazygit/releases` and put it on your PATH.
 
 - Keep **WezTerm + Hack Nerd Font installed on Windows** (WezTerm is the Windows
   host app that renders WSL).
@@ -197,8 +197,13 @@ Do everything in **Setup B**, then:
 | `[d` / `]d`                | prev / next diagnostic                |
 | `<leader>ff` / `fg` / `fb` | find files / live grep / buffers      |
 | `<leader>gg` / `gl` / `gf` | lazygit status / repo log / file log  |
-| `Ctrl+h/j/k/l`             | move between windows (splits)         |
+| `<leader>xx` / `xX`        | diagnostics: workspace / buffer (Trouble) |
+| `<leader>xs` / `xq`        | symbols / quickfix (Trouble)          |
+| `Ctrl+h/j/k/l`             | move between Neovim splits            |
+| `Alt+h/j/k/l`              | resize the active Neovim split        |
 | `Ctrl+q` (in a terminal)   | leave terminal mode -> normal mode    |
+
+Press `<leader>` and pause to see every mapping in a **which-key** popup.
 
 `Ctrl+h/j/k/l` also work **from inside the Claude terminal** — they drop you out
 of terminal mode and into the next split in one keystroke (so use `Backspace`,
@@ -247,4 +252,19 @@ terminal so Claude's "delete word" still works.
 
 Install language servers/formatters via `:Mason` (stylua, ruff, prettierd,
 pyright, csharp_ls/omnisharp for .NET if you ever edit it in nvim). Nice extras:
-`which-key.nvim` (keybinding popup), `bufferline.nvim` (styled tabs).
+`bufferline.nvim` (styled tabs), `flash.nvim` (jump motions),
+`nvim-treesitter-textobjects` (function/class text objects).
+
+## Bundled extras
+
+Beyond the core editor, these popular plugins are wired in:
+
+- **Neovim:** which-key (keybinding popup), smart-splits (`Ctrl+hjkl` split
+  navigation, `Alt+hjkl` resize), Trouble (`<leader>x…` diagnostics),
+  todo-comments, indent-blankline, nvim-autopairs, gitsigns + lazygit.
+- **WezTerm:** no plugin manager — the config uses only built-in APIs (a right
+  status bar with workspace/battery/clock + a leader indicator, and custom tab
+  titles). This keeps startup fast and avoids the flashing cmd windows the
+  WezTerm plugin system spawns on Windows. `Ctrl/Alt+hjkl` are left unbound at
+  the WezTerm level so they pass straight through to Neovim's smart-splits;
+  WezTerm pane navigation is on `leader h/j/k/l`.
