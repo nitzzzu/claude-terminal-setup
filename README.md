@@ -1,0 +1,222 @@
+# Dev Terminal Setup — WezTerm + Neovim + Claude Code
+
+One set of config files, **three setups** chosen by a single flag:
+
+| Setup                  | Who it's for                                                            | `USE_WSL` |
+| ---------------------- | ----------------------------------------------------------------------- | --------- |
+| **A — Native Windows** | No WSL; pure Windows toolchain                                          | `false`   |
+| **B — WSL**            | Smoothest Linux-style dev; real tmux                                    | `true`    |
+| **C — Hybrid**         | WSL for daily dev **+** Visual Studio on Windows for a big .NET project | `true`    |
+
+The flag lives at the top of `wezterm/wezterm.lua`:
+
+```lua
+local USE_WSL = true          -- B / C
+local WSL_DISTRO = "Ubuntu-24.04"
+```
+
+Setups B and C share the same config; **Hybrid is just the WSL setup plus the
+`LEADER+w` keybind** that opens a native Windows PowerShell tab for .NET work.
+
+## Quick install
+
+Once the requirements for your setup are installed (see the per-setup sections
+below), run the bundled installer. It patches the `USE_WSL` / `WSL_DISTRO`
+flags, copies every config to the right place, **installs Hack Nerd Font**
+(per-user, no admin — on the Windows side for A/B/C), and verifies your tools.
+
+```bash
+# Setup B / C — run INSIDE WSL:
+python3 onboard.py                 # auto-detects WSL + distro, defaults to B
+
+# Setup A — run on Windows:
+python onboard.py --setup A
+```
+
+Useful flags:
+
+```bash
+python3 onboard.py --dry-run       # show what it would do, change nothing
+python3 onboard.py --setup C       # hybrid (WSL + Windows PowerShell pane)
+python3 onboard.py --distro Ubuntu # override the auto-detected distro name
+python3 onboard.py --skip-font     # skip the Hack Nerd Font install
+```
+
+The installer is dependency-free (Python stdlib only) and idempotent — safe to
+re-run. The manual steps in each setup section below remain as a reference for
+doing it by hand.
+
+## Bundle contents
+
+```
+claude-terminal-setup/
+├── README.md
+├── onboard.py                 # one-command installer (see Quick install)
+├── wezterm/
+│   ├── wezterm.lua            -> %USERPROFILE%\.config\wezterm\wezterm.lua
+│   └── config/{platform,appearance,keys}.lua
+├── nvim/
+│   └── init.lua               -> Windows: %LOCALAPPDATA%\nvim\init.lua
+│                              -> WSL:     ~/.config/nvim/init.lua
+└── tmux/
+    └── .tmux.conf             -> WSL only: ~/.tmux.conf
+```
+
+---
+
+## Two rules that decide everything
+
+**1. Don't mix sides.** Neovim and Claude Code must be on the same side (both
+WSL, or both Windows) for the claudecode.nvim `/ide` integration to work.
+
+**2. Each tool is fast on its own filesystem, slow across the bridge.**
+- Linux CLI tools (nvim, tmux, Claude-in-WSL) are fast on the WSL disk (`~/`),
+  slow on `/mnt/c`.
+- Windows GUI tools (Visual Studio) are fast on `C:\`, slow on `\\wsl$`.
+- So: **WSL projects live in `~/`**, the **big .NET project stays on `C:\`** and
+  is edited in Visual Studio. Don't force either across the bridge.
+
+**Data safety (WSL):** your WSL files sit in one virtual disk. Treat **git +
+a remote** as your source of truth, shut down with `wsl --shutdown`, and take
+occasional snapshots: `wsl --export Ubuntu-24.04 D:\backups\wsl.tar`.
+
+---
+
+## Setup A — Native Windows
+
+In **PowerShell**:
+
+```powershell
+winget install wez.wezterm
+winget install Microsoft.PowerShell
+winget install Neovim.Neovim
+winget install Git.Git
+winget install zig.zig                  # treesitter compiler
+winget install BurntSushi.ripgrep.MSVC  # Telescope
+irm https://claude.ai/install.ps1 | iex # Claude Code
+```
+
+- Install **Hack Nerd Font** from nerdfonts.com (select `.ttf` -> Install).
+- Run `python onboard.py --setup A` to do the rest, **or** by hand:
+  - Set `USE_WSL = false` in `wezterm/wezterm.lua`.
+  - Copy `wezterm/` -> `%USERPROFILE%\.config\wezterm\`.
+  - Copy `nvim/init.lua` -> `%LOCALAPPDATA%\nvim\init.lua`.
+- `claude doctor`, then `claude` once to log in.
+
+---
+
+## Setup B — WSL (recommended baseline)
+
+choco install wezterm -y
+
+Install WSL (PowerShell as admin), then work **inside** Ubuntu:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+Inside WSL:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential ripgrep tmux unzip
+sudo apt install -y neovim   # or the latest from github.com/neovim/neovim/releases
+curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (Linux build)
+```
+
+- Keep **WezTerm + Hack Nerd Font installed on Windows** (WezTerm is the Windows
+  host app that renders WSL).
+- Run `python3 onboard.py` inside WSL to do the rest, **or** by hand:
+  - Set `USE_WSL = true` and `WSL_DISTRO` to your distro name (`wsl -l -q` lists it).
+  - Copy `wezterm/` -> `%USERPROFILE%\.config\wezterm\` (Windows side).
+  - Copy `nvim/init.lua` -> `~/.config/nvim/init.lua` (inside WSL).
+  - Copy `tmux/.tmux.conf` -> `~/.tmux.conf` (inside WSL).
+- `claude` once to log in.
+
+Treesitter uses the preinstalled gcc — no zig needed (the config prefers zig but
+falls back to gcc/clang automatically).
+
+---
+
+## Setup C — Hybrid (WSL + Visual Studio for .NET)
+
+Do everything in **Setup B**, then:
+
+- Keep your big **.NET solution on `C:\`** and open it in **Visual Studio** as
+  normal — do not move it into WSL.
+- In WezTerm, `LEADER+w` opens a **native Windows PowerShell tab** for `dotnet`
+  CLI work next to Visual Studio.
+- For a quick read of the .NET project from the WSL side, reach it via
+  `/mnt/c/...` — fine for light work, not heavy file operations.
+- Run **Claude Code on whichever side the project lives**: `claude` in WSL for
+  WSL projects; a Windows `claude` (install via the `.ps1` from Setup A) in the
+  `LEADER+w` PowerShell tab for the .NET project.
+
+---
+
+## Keybindings
+
+**WezTerm** (leader = `Ctrl+Space`):
+
+| Keys                            | Action                                    |
+| ------------------------------- | ----------------------------------------- |
+| `leader` `c` / `n` / `p`        | new / next / prev tab                     |
+| `leader` `\` / `-`              | split right / down                        |
+| `leader` `h/j/k/l`              | move between panes                        |
+| `leader` `z` / `x` / `m`        | zoom / close pane / maximize              |
+| `leader` `a`                    | Claude Code in a right pane               |
+| `leader` `w`                    | **Windows PowerShell tab** (Windows only) |
+| `leader` `u`                    | extra WSL pane (Windows + `USE_WSL`)      |
+| `Ctrl+Shift+V` / `Ctrl+Shift+C` | paste / copy                              |
+
+**Neovim** (leader = `Space`):
+
+| Keys                       | Action                                |
+| -------------------------- | ------------------------------------- |
+| `<leader>e`                | toggle file tree                      |
+| `<leader>ac` / `af`        | toggle / focus Claude                 |
+| `<leader>as` (visual)      | send selection to Claude              |
+| `<leader>as` (in tree)     | add file under cursor to Claude       |
+| `<leader>ab`               | add current buffer to Claude          |
+| `<leader>aa` / `ad`        | accept / reject Claude diff           |
+| `gd` / `gr` / `K`          | definition / references / hover (LSP) |
+| `<leader>rn` / `ca`        | rename / code action (LSP)            |
+| `[d` / `]d`                | prev / next diagnostic                |
+| `<leader>ff` / `fg` / `fb` | find files / live grep / buffers      |
+
+**tmux** (WSL): default prefix `Ctrl+b`; mouse enabled.
+
+---
+
+## Using Claude
+
+- **Inside Neovim:** `:ClaudeCode` (or `<leader>ac`), select code + `<leader>as`
+  to send, accept edits as native diffs with `<leader>aa`.
+- **In a pane:** `LEADER+a` opens Claude; type `/ide` inside it to connect to the
+  running Neovim on the same side.
+
+---
+
+## Troubleshooting
+
+- **`claude` not found in Neovim** -> set `terminal_cmd` in the claudecode.nvim
+  `opts` (Windows: `where.exe claude`; WSL: `which claude`).
+- **Treesitter "no C compiler"** -> Windows: `winget install zig.zig`;
+  WSL: `sudo apt install build-essential`. Then `:TSUpdate`.
+- **nvim washed out / no undercurl in tmux** -> ensure `~/.tmux.conf` has the
+  truecolor + `usstyle` lines (it does here); restart tmux (`tmux kill-server`).
+- **`/ide` won't connect** -> Neovim and Claude are on different sides; put both
+  in WSL or both on Windows.
+- **Visual Studio slow on a WSL project** -> expected; move that project to `C:\`.
+- **`pwsh.exe` not found** -> install PowerShell 7 or change `pwsh.exe` to
+  `powershell.exe` in `wezterm.lua` / `keys.lua`.
+- **LSP server won't install** -> some servers (pyright, ts_ls) need Node.js;
+  WSL `sudo apt install nodejs npm`, Windows install Node separately.
+
+---
+
+## Optional next steps
+
+Install language servers/formatters via `:Mason` (stylua, ruff, prettierd,
+pyright, csharp_ls/omnisharp for .NET if you ever edit it in nvim). Nice extras:
+`which-key.nvim` (keybinding popup), `bufferline.nvim` (styled tabs).
