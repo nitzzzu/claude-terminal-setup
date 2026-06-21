@@ -47,6 +47,7 @@ python3 onboard.py --setup C       # hybrid (WSL + Windows PowerShell pane)
 python3 onboard.py --distro Ubuntu # override the auto-detected distro name
 python3 onboard.py --dev-dir ~/dev # new tabs open here instead of the home dir
 python3 onboard.py --skip-font     # skip the Hack Nerd Font install
+python3 onboard.py --skip-tpm      # skip TPM + the tmux plugins (WSL)
 ```
 
 The installer is dependency-free (Python stdlib only) and idempotent — safe to
@@ -133,9 +134,12 @@ curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (Linux build)
 ```
 
 `onboard.py` also installs **lazygit** (the `<leader>gg` git UI in Neovim) into
-`~/.local/bin`, plus the **wezterm terminfo** (so tmux/nvim work under
-`TERM=wezterm`). To do lazygit by hand, grab the `Linux_x86_64` tarball from
-`github.com/jesseduffield/lazygit/releases` and put it on your PATH.
+`~/.local/bin`, the **wezterm terminfo** (so tmux/nvim work under `TERM=wezterm`),
+and **TPM + the tmux plugins** the config declares (rose-pine theme,
+`tmux-resurrect`, `tmux-continuum`). To do lazygit by hand, grab the
+`Linux_x86_64` tarball from `github.com/jesseduffield/lazygit/releases` and put
+it on your PATH. (`.tmux.conf` also self-bootstraps TPM on first launch, so the
+plugins install even if you skip the installer.)
 
 - Keep **WezTerm + Hack Nerd Font installed on Windows** (WezTerm is the Windows
   host app that renders WSL).
@@ -187,6 +191,7 @@ Do everything in **Setup B**, then:
 | Keys                       | Action                                |
 | -------------------------- | ------------------------------------- |
 | `<leader>e`                | toggle file tree                      |
+| `-`                        | parent dir as an editable buffer (oil)|
 | `<leader>ac` / `af`        | toggle / focus Claude                 |
 | `<leader>as` (visual)      | send selection to Claude              |
 | `<leader>as` (in tree)     | add file under cursor to Claude       |
@@ -196,6 +201,7 @@ Do everything in **Setup B**, then:
 | `<leader>rn` / `ca`        | rename / code action (LSP)            |
 | `[d` / `]d`                | prev / next diagnostic                |
 | `<leader>ff` / `fg` / `fb` | find files / live grep / buffers      |
+| `<leader>cp` / `cr`        | copy absolute / relative file path    |
 | `<leader>gg` / `gl` / `gf` | lazygit status / repo log / file log  |
 | `<leader>xx` / `xX`        | diagnostics: workspace / buffer (Trouble) |
 | `<leader>xs` / `xq`        | symbols / quickfix (Trouble)          |
@@ -211,6 +217,19 @@ not `Ctrl+h`, to delete inside Claude). `Ctrl+w` is left untouched in the
 terminal so Claude's "delete word" still works.
 
 **tmux** (WSL): default prefix `Ctrl+b`; mouse enabled.
+
+| Keys                       | Action                                   |
+| -------------------------- | ---------------------------------------- |
+| `prefix` `h/j/k/l`         | move between panes                       |
+| `prefix` `"` / `%`         | split below / right (in the current cwd) |
+| `prefix` `c`               | new window (in the current cwd)          |
+| `prefix` `y`               | enter copy-mode                          |
+| `v` / `y` (in copy-mode)   | start selection / copy to Windows clipboard |
+
+Styled with the **rose-pine (moon)** theme via TPM, with `tmux-resurrect` +
+`tmux-continuum` auto-saving and restoring sessions. Copy-mode yanks pipe to
+`clip.exe` (the Windows clipboard). First launch fetches the plugins — if the
+bar looks unthemed, reload a running session with `prefix + I`.
 
 ---
 
@@ -235,6 +254,12 @@ terminal so Claude's "delete word" still works.
   (needs `tic` from `ncurses-bin`).
 - **nvim washed out / no undercurl in tmux** -> ensure `~/.tmux.conf` has the
   truecolor + `usstyle` lines (it does here); restart tmux (`tmux kill-server`).
+- **tmux bar unthemed / plugins missing** -> TPM hasn't fetched them yet. Re-run
+  `onboard.py` (WSL), or in a running tmux press `prefix + I` to install.
+- **Paste in nvim is slow (WSL)** -> each paste spawns `powershell.exe` to read
+  the Windows clipboard. Put `win32yank.exe` on PATH and delete the
+  `vim.g.clipboard` block in `init.lua`; Neovim auto-detects win32yank (faster
+  both directions). `"+y` and `<leader>cp`/`cr` need a provider to reach Windows.
 - **`/ide` won't connect** -> Neovim and Claude are on different sides; put both
   in WSL or both on Windows.
 - **`<leader>gg` errors / "lazygit not found"** -> the `lazygit` binary isn't on
@@ -261,7 +286,14 @@ Beyond the core editor, these popular plugins are wired in:
 
 - **Neovim:** which-key (keybinding popup), smart-splits (`Ctrl+hjkl` split
   navigation, `Alt+hjkl` resize), Trouble (`<leader>x…` diagnostics),
-  todo-comments, indent-blankline, nvim-autopairs, gitsigns + lazygit.
+  todo-comments, indent-blankline, nvim-autopairs, gitsigns + lazygit, oil
+  (`-` edits the filesystem as a buffer), render-markdown (in-buffer markdown),
+  highlight-on-yank, and a WSL clipboard provider (`clip.exe` copy / PowerShell
+  paste) so `"+y` reaches Windows.
+- **tmux (WSL):** rose-pine (moon) theme + session save/restore
+  (`tmux-resurrect` / `tmux-continuum`) via TPM; vim-style `prefix h/j/k/l` pane
+  navigation; splits/windows inherit the current pane's cwd; copy-mode yanks to
+  `clip.exe`.
 - **WezTerm:** no plugin manager — the config uses only built-in APIs (a right
   status bar with workspace/battery/clock + a leader indicator, and custom tab
   titles). This keeps startup fast and avoids the flashing cmd windows the

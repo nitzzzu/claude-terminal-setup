@@ -57,8 +57,11 @@ is mutated by an install; expect git diffs there.
 - `nvim/init.lua` and `tmux/.tmux.conf` go to the side that *runs* them: into the
   Linux `~/` when inside WSL, into `%LOCALAPPDATA%\nvim\` for native Windows.
 
-It also installs Hack Nerd Font, lazygit, and the `wezterm` terminfo (so
-`TERM=wezterm` works under tmux/nvim), each skippable via a flag.
+It also installs Hack Nerd Font, lazygit, the `wezterm` terminfo (so
+`TERM=wezterm` works under tmux/nvim), and — inside WSL — TPM plus the tmux
+plugins `.tmux.conf` declares (rose-pine theme, resurrect, continuum). Each is
+skippable via a flag. `install_tpm` must run *after* `.tmux.conf` is copied,
+since TPM's `bin/install_plugins` reads the `@plugin` lines out of it.
 
 **`wezterm/`** — `wezterm.lua` is the entry point; it sets `package.path` then
 requires `config/{platform,appearance,keys,plugins}.lua`. Each is a module
@@ -73,7 +76,13 @@ are intentionally left *unbound* at the WezTerm level so they pass through to
 Neovim's smart-splits; WezTerm pane navigation lives on `leader h/j/k/l`.
 
 **`nvim/init.lua`** — a single-file Neovim config (lazy.nvim bootstrapped
-inline). Integrates `claudecode.nvim` for the `/ide` diff workflow.
+inline). Integrates `claudecode.nvim` for the `/ide` diff workflow. Also wires in
+oil (`-`), render-markdown, highlight-on-yank, copy-path maps (`<leader>cp/cr`),
+and a WSL-only `clip.exe` clipboard provider.
+
+**`tmux/.tmux.conf`** — WSL only. Truecolor/undercurl passthrough plus the
+rose-pine (moon) theme, `tmux-resurrect`/`tmux-continuum`, and vim-style pane
+nav, all managed by TPM (which it self-bootstraps on first launch).
 
 ## Editing-the-config gotchas
 
@@ -87,3 +96,14 @@ inline). Integrates `claudecode.nvim` for the `/ide` diff workflow.
   was ever read mid-write (e.g. during `onboard.py`'s copy), Lua caches the
   boolean `true` a return-less module yields and you get `attempt to index a
   boolean value`. Only a fresh process re-`require`s the file.
+- **`oil.nvim` is set `default_file_explorer = false`** so it does *not* hijack
+  netrw and fight neo-tree (which owns browsing and `nvim .` via
+  `hijack_netrw_behavior`). oil opens only via the explicit `-` map.
+- **The nvim WSL clipboard provider is `clip.exe` (copy) + PowerShell
+  `Get-Clipboard` (paste)**, guarded by `has('wsl')` so native-Windows setup A
+  keeps nvim's built-in provider. Paste spawns `powershell.exe` (slow);
+  `win32yank.exe` on PATH + deleting the `vim.g.clipboard` block is the fast
+  alternative. The provider is what makes `"+y` / `<leader>cp` reach Windows.
+- **`install_tpm` in `onboard.py` must run after the `.tmux.conf` copy** — TPM's
+  `bin/install_plugins` reads the `@plugin` lines out of `~/.tmux.conf`. The conf
+  also self-bootstraps TPM on first tmux launch, so the two are belt-and-braces.
