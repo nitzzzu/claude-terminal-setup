@@ -12,13 +12,16 @@ function M.apply(config, platform, opts)
   config.disable_default_key_bindings = true
   config.leader = { key = "Space", mods = "CTRL" }
 
-  -- How to launch Claude: in WSL/Unix just `claude`; on native Windows wrap
-  -- in PowerShell so the interactive TUI works.
+  -- How to launch Claude. On native Windows wrap in PowerShell so the
+  -- interactive TUI works. On WSL/Unix go through a login shell (`bash -lc`):
+  -- WezTerm execs the program directly, so it never sources ~/.profile and
+  -- ~/.local/bin (where `claude` lives) is missing from PATH -> "can't find".
+  -- A login shell sources the profile first, then exec replaces it with claude.
   local claude_cmd
   if platform.is_windows and not opts.use_wsl then
     claude_cmd = { "pwsh.exe", "-NoExit", "-Command", "claude" }
   else
-    claude_cmd = { "claude" }
+    claude_cmd = { "bash", "-lc", "exec claude" }
   end
 
   -- Directory new tabs/panes open in. nil -> inherit / domain default.
