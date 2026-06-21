@@ -17,11 +17,14 @@ Run it from inside WSL for setup B/C, or from Windows (python) for setup A.
     python3 onboard.py --dev-dir ~/dev # new WezTerm tabs open here, not the home dir
     python3 onboard.py --skip-font     # don't install Hack Nerd Font
     python3 onboard.py --skip-lazygit  # don't install lazygit (the <leader>gg UI)
+    python3 onboard.py --skip-tpm      # don't install TPM / the tmux plugins (WSL)
     python3 onboard.py --dry-run       # show what would happen, change nothing
 
 Besides copying configs, it installs Hack Nerd Font, the lazygit binary (the
 visual git UI Neovim opens with <leader>gg), and the wezterm terminfo (so tmux
-and nvim work under TERM=wezterm) on whichever side the shell runs from.
+and nvim work under TERM=wezterm) on whichever side the shell runs from. Inside
+WSL it also installs TPM and the tmux plugins (rose-pine theme + session
+save/restore) that .tmux.conf declares.
 
 Neovim plugins (which-key, smart-splits, trouble, ...) install themselves via
 lazy.nvim on first launch. The WezTerm config uses only built-in APIs (no plugin
@@ -57,6 +60,11 @@ FONT_URL = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Hac
 # WezTerm terminfo — needed inside WSL/Linux because wezterm.lua sets
 # TERM=wezterm; without it tmux/nvim error ("missing or unsuitable terminal").
 TERMINFO_URL = "https://raw.githubusercontent.com/wez/wezterm/main/termwiz/data/wezterm.terminfo"
+
+# TPM — tmux plugin manager. The .tmux.conf @plugin lines (rose-pine theme,
+# tmux-resurrect, tmux-continuum) need it; .tmux.conf also self-bootstraps TPM on
+# first launch, but installing here fetches the plugins up front (WSL side only).
+TPM_URL = "https://github.com/tmux-plugins/tpm"
 
 # lazygit — the visual git UI opened from Neovim with <leader>gg (via snacks).
 LAZYGIT_API = "https://api.github.com/repos/jesseduffield/lazygit/releases/latest"
@@ -357,6 +365,68 @@ def install_terminfo(dry: bool) -> bool:
     return True
 
 
+def install_tpm(dry: bool) -> bool:
+    """Clone TPM into ~/.tmux/plugins/tpm and fetch the plugins .tmux.conf declares.
+
+    Must run AFTER .tmux.conf is copied to ~/.tmux.conf — bin/install_plugins
+    reads @plugin / TMUX_PLUGIN_MANAGER_PATH from a *running* tmux server, so we
+    first ensure a server has sourced the freshly-copied conf (a cold run aborts
+    with "Tmux Plugin Manager not configured in tmux.conf").
+    """
+    dest = Path.home() / ".tmux" / "plugins" / "tpm"
+    if not shutil.which("git"):
+        warn("git not found; can't install TPM here — .tmux.conf will clone it on "
+             "first tmux launch instead")
+        return False
+    if dry:
+        if dest.exists():
+            warn(f"[dry-run] would refresh tmux plugins via {dest}/bin/install_plugins")
+        else:
+            warn(f"[dry-run] would clone TPM -> {dest} and install the tmux plugins")
+        return True
+    try:
+        if dest.exists():
+            ok(f"TPM already installed {C.DIM}-> {dest}{C.END}")
+        else:
+            say(f"  {C.DIM}cloning TPM...{C.END}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "clone", "--depth", "1", TPM_URL, str(dest)],
+                           check=True, stdout=subprocess.DEVNULL)
+            ok(f"TPM installed -> {dest}")
+        installer = dest / "bin" / "install_plugins"
+        if not installer.exists():
+            warn("TPM has no bin/install_plugins; run `prefix + I` in tmux to fetch")
+            return True
+        if not shutil.which("tmux"):
+            warn("tmux not on PATH; plugins install on first tmux launch (`prefix + I`)")
+            return True
+        say(f"  {C.DIM}installing tmux plugins "
+            f"(rose-pine, resurrect, continuum)...{C.END}")
+        # install_plugins talks to a running tmux server; make sure one has sourced
+        # the freshly-copied conf so @plugin / TMUX_PLUGIN_MANAGER_PATH are set.
+        conf = Path.home() / ".tmux.conf"
+        had_server = subprocess.run(["tmux", "ls"], stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL).returncode == 0
+        if had_server:
+            subprocess.run(["tmux", "source-file", str(conf)], check=False)
+        else:
+            # new-session starts the server and sources ~/.tmux.conf on the way up
+            subprocess.run(["tmux", "new-session", "-d", "-s", "__onboard_tpm__"],
+                           check=False)
+        rc = subprocess.run([str(installer)],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT).returncode
+        if not had_server:
+            subprocess.run(["tmux", "kill-server"], check=False)  # we started it; tidy up
+        if rc != 0:
+            warn("tmux plugin install errored; open tmux and run `prefix + I` to retry")
+            return False
+    except Exception as e:  # network / git / IO
+        err(f"TPM install failed ({e}); .tmux.conf will clone it on first tmux launch")
+        return False
+    ok("tmux plugins installed (reload a running tmux with `prefix + I` if unthemed)")
+    return True
+
+
 def patch_wezterm(use_wsl: bool, distro: str | None, dev_dir: str | None,
                   dry: bool) -> None:
     """Rewrite the USE_WSL / WSL_DISTRO / DEV_DIR flags at the top of wezterm.lua."""
@@ -487,6 +557,8 @@ def main() -> int:
                     help="don't install lazygit (the <leader>gg git UI)")
     ap.add_argument("--skip-terminfo", action="store_true",
                     help="don't install the wezterm terminfo (WSL/Linux)")
+    ap.add_argument("--skip-tpm", action="store_true",
+                    help="don't install TPM / the tmux plugins (WSL)")
     ap.add_argument("--dry-run", action="store_true", help="show actions, change nothing")
     args = ap.parse_args()
 
@@ -574,6 +646,14 @@ def main() -> int:
         else:
             header("Installing wezterm terminfo")
             install_terminfo(args.dry_run)
+
+    # TPM + tmux plugins live on the WSL side, where .tmux.conf was copied.
+    if wsl:
+        header("Installing TPM (tmux plugins)")
+        if args.skip_tpm:
+            warn("skipped (--skip-tpm); .tmux.conf will clone TPM on first tmux launch")
+        else:
+            install_tpm(args.dry_run)
 
     verify_tools(WSL_TOOLS if wsl else WIN_TOOLS)
     next_steps(setup)
